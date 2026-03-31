@@ -270,10 +270,33 @@ def cmd_list
   read_array(data, arrays.first).each { |v| puts v }
 end
 
-# --- main ---
+def pick_pack
+  script_dir = File.dirname(File.expand_path(__FILE__))
+  verbs_dir = File.join(script_dir, 'verbs')
+  packs = Dir.glob(File.join(verbs_dir, '*.json')).sort
 
-script_dir = File.dirname(File.expand_path(__FILE__))
-verbs_file = File.join(script_dir, 'verbs', 'pl.json')
+  if packs.empty?
+    abort "No verb packs found in #{verbs_dir}"
+  end
+
+  puts "Available packs:"
+  packs.each_with_index do |p, i|
+    name = File.basename(p, '.json')
+    verbs = JSON.parse(File.read(p))
+    sample = verbs.first(3).join(', ')
+    puts "  #{i + 1}) #{name} (#{verbs.size} verbs: #{sample}...)"
+  end
+
+  print "\nPick a pack [1-#{packs.size}]: "
+  choice = $stdin.gets
+  abort "Cancelled." unless choice
+  choice = choice.strip.to_i
+  abort "Invalid choice." unless choice >= 1 && choice <= packs.size
+
+  packs[choice - 1]
+end
+
+# --- main ---
 
 case ARGV[0]
 when '--restore'
@@ -281,7 +304,11 @@ when '--restore'
 when '--list'
   cmd_list
 else
-  verbs_file = ARGV[0] if ARGV[0] && !ARGV[0].start_with?('-')
-  abort "Verbs file not found: #{verbs_file}" unless File.exist?(verbs_file)
+  if ARGV[0] && !ARGV[0].start_with?('-')
+    verbs_file = ARGV[0]
+    abort "File not found: #{verbs_file}" unless File.exist?(verbs_file)
+  else
+    verbs_file = pick_pack
+  end
   cmd_patch(verbs_file)
 end

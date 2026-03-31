@@ -12,28 +12,34 @@ cd dzialaj-mi-tam
 ruby patch.rb
 ```
 
-Or one-liner (requires git):
+Running without arguments shows an interactive picker:
 
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/kamil/dzialaj-mi-tam/master/install.sh)
+```
+Available packs:
+  1) chef (30 verbs: Chopping, Dicing, Simmering...)
+  2) corporate (30 verbs: Synergizing, Leveraging, Disrupting...)
+  3) cursed (40 verbs: Procrastinating, Overthinking, Panicking...)
+  4) gym (30 verbs: Repping, Curling, Squatting...)
+  5) pl (70 verbs: Ogarnianie, Kminienie, Opieprzanie...)
+
+Pick a pack [1-5]:
 ```
 
-## Verb packs
-
-| Pack | File | Vibe |
-|------|------|------|
-| Polish | `verbs/pl.json` | Ogarnianie, Pierdolenie, Kombinowanie... (default) |
-| Original | `verbs/original.json` | The stock Claude Code verbs |
-| Cursed | `verbs/cursed.json` | Procrastinating, Hallucinating, Doom-scrolling... |
-| Chef | `verbs/chef.json` | Chopping, Deglazing, Sous-viding... |
-| Corporate | `verbs/corporate.json` | Synergizing, Circling-back, Solutioning... |
-| Gym | `verbs/gym.json` | Squatting, Deadlifting, Maxing-out... |
-
-Use a specific pack:
+Or pass a pack directly:
 
 ```bash
 ruby patch.rb verbs/cursed.json
 ```
+
+## Verb packs
+
+| Pack | Vibe |
+|------|------|
+| `pl` | Ogarnianie, Pierdolenie, Kombinowanie... |
+| `cursed` | Procrastinating, Hallucinating, Doom-scrolling... |
+| `chef` | Chopping, Deglazing, Sous-viding... |
+| `corporate` | Synergizing, Circling-back, Solutioning... |
+| `gym` | Squatting, Deadlifting, Maxing-out... |
 
 ## Restore
 

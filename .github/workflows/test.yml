@@ -40,9 +40,9 @@ jobs:
           /usr/bin/ruby patch.rb --list | head -5
           [ "$COUNT" -ge 50 ]
 
-      - name: Patch default (pl)
+      - name: Patch with pl
         run: |
-          /usr/bin/ruby patch.rb
+          /usr/bin/ruby patch.rb verbs/pl.json
           /usr/bin/ruby patch.rb --list | head -5
           ! /usr/bin/ruby patch.rb --list | grep -q "Accomplishing"
 
