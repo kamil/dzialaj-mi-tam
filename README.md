@@ -1,6 +1,6 @@
 # dzialaj-mi-tam
 
-Replace Claude Code spinner verbs with your own. Ships with a Polish set by default.
+Replace Claude Code spinner verbs with your own.
 
 Uses system Ruby (`/usr/bin/ruby`) that comes pre-installed on macOS. No dependencies.
 
@@ -18,6 +18,23 @@ Or one-liner (requires git):
 bash <(curl -fsSL https://raw.githubusercontent.com/kamil/dzialaj-mi-tam/master/install.sh)
 ```
 
+## Verb packs
+
+| Pack | File | Vibe |
+|------|------|------|
+| Polish | `verbs/pl.json` | Ogarnianie, Pierdolenie, Kombinowanie... (default) |
+| Original | `verbs/original.json` | The stock Claude Code verbs |
+| Cursed | `verbs/cursed.json` | Procrastinating, Hallucinating, Doom-scrolling... |
+| Chef | `verbs/chef.json` | Chopping, Deglazing, Sous-viding... |
+| Corporate | `verbs/corporate.json` | Synergizing, Circling-back, Solutioning... |
+| Gym | `verbs/gym.json` | Squatting, Deadlifting, Maxing-out... |
+
+Use a specific pack:
+
+```bash
+ruby patch.rb verbs/cursed.json
+```
+
 ## Restore
 
 ```bash
@@ -26,16 +43,14 @@ ruby patch.rb --restore
 
 ## Custom verbs
 
-Edit `verbs.json` or point to your own file:
-
-```bash
-ruby patch.rb my_verbs.json
-```
-
-Format: plain JSON array of strings:
+Create your own JSON file:
 
 ```json
 ["Thinking", "Pondering", "Vibing"]
+```
+
+```bash
+ruby patch.rb my_verbs.json
 ```
 
 ## List current verbs

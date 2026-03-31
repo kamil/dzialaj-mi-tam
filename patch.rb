@@ -50,7 +50,13 @@ def find_verb_arrays(data)
 end
 
 def find_any_verb_array(data)
-  probes = %w[Thinking Pondering Ogarnianie Pierdolenie Kminienie Kombinowanie Working Creating]
+  hits = []
+  probes = %w[Boondoggling Flibbertigibbeting Razzmatazzing Prestidigitating
+              Discombobulating Whatchamacalliting Shenaniganing Hullaballooing
+              Ogarnianie Pierdolenie Kminienie Kombinowanie
+              Procrastinating Overthinking Doom-scrolling
+              Synergizing Solutioning Squatting Deadlifting
+              Chopping Deglazing]
   probes.each do |verb|
     vb = verb.b
     pos = 0
@@ -58,43 +64,72 @@ def find_any_verb_array(data)
       hs = idx - 16
       if hs >= 0 && data[hs, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
         str_len = data[hs + 12, 4].unpack1('V')
-        if str_len == vb.size
-          scan = hs
-          loop do
-            found_prev = false
-            (4..4).each do |_|
-              64.step(16, -16) do |try_back|
-                test = scan - try_back
-                next if test < 0
-                next unless data[test, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
-                tl = data[test + 12, 4].unpack1('V')
-                next unless tl >= 3 && tl <= 30
-                tp = ((tl + 15) / 16) * 16
-                if test + 16 + tp == scan
-                  scan = test
-                  found_prev = true
-                  break
-                end
-              end
-            end
-            break unless found_prev
-          end
-          return [scan]
-        end
+        hits << hs if str_len == vb.size
       end
       pos = idx + vb.size
     end
   end
-  []
+  return [] if hits.empty?
+
+  hits.sort!
+  hits.uniq!
+
+  groups = hits.slice_when { |a, b| b - a > 100_000 }.to_a
+
+  groups.map do |group|
+    earliest = group.min
+    scan = earliest
+    loop do
+      found_prev = false
+      64.step(16, -16) do |try_back|
+        test = scan - try_back
+        next if test < 0
+        next unless data[test, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
+        tl = data[test + 12, 4].unpack1('V')
+        next unless tl >= 3 && tl <= 30
+        tp = ((tl + 15) / 16) * 16
+        if test + 16 + tp == scan
+          scan = test
+          found_prev = true
+          break
+        end
+      end
+      break unless found_prev
+    end
+    scan
+  end.uniq.select { |r| count_entries(data, r) >= 50 }
+end
+
+def count_entries(data, start)
+  limit = start + 9_000
+  pos = start
+  count = 0
+  while (pos = skip_to_entry(data, pos, limit))
+    str_len = data[pos + 12, 4].unpack1('V')
+    padded = ((str_len + 15) / 16) * 16
+    count += 1
+    pos += 16 + padded
+  end
+  count
+end
+
+def skip_to_entry(data, pos, limit)
+  while pos < limit
+    if data[pos, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
+      str_len = data[pos + 12, 4].unpack1('V')
+      return pos if str_len >= 3 && str_len <= 30
+    end
+    pos += 16
+  end
+  nil
 end
 
 def read_array(data, start)
   verbs = []
+  limit = start + 9_000
   pos = start
-  loop do
-    break unless data[pos, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
+  while (pos = skip_to_entry(data, pos, limit))
     str_len = data[pos + 12, 4].unpack1('V')
-    break if str_len < 3 || str_len > 30
     padded = ((str_len + 15) / 16) * 16
     verbs << data[pos + 16, str_len].force_encoding('UTF-8')
     pos += 16 + padded
@@ -103,34 +138,26 @@ def read_array(data, start)
 end
 
 def patch_array(data, start, verbs)
+  limit = start + 9_000
   pos = start
   patched = 0
   verb_idx = 0
 
-  loop do
-    break unless data[pos, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
+  while (pos = skip_to_entry(data, pos, limit))
     str_len = data[pos + 12, 4].unpack1('V')
-    break if str_len < 3 || str_len > 30
-
     padded = ((str_len + 15) / 16) * 16
     slot_size = 16 + padded
 
-    new_str = verbs[verb_idx % verbs.size]
+    fits = verbs.select { |v| v.encode('UTF-8').bytesize <= padded }
+    if fits.empty?
+      verb_idx += 1
+      pos += slot_size
+      next
+    end
+
+    new_str = fits[verb_idx % fits.size]
     new_bytes = new_str.encode('UTF-8')
     new_len = new_bytes.size
-    new_padded = ((new_len + 15) / 16) * 16
-
-    if new_padded > padded
-      fits = verbs.select { |v| ((v.encode('UTF-8').size + 15) / 16) * 16 <= padded }
-      if fits.any?
-        new_str = fits[verb_idx % fits.size]
-        new_bytes = new_str.encode('UTF-8')
-        new_len = new_bytes.size
-      else
-        new_bytes = new_bytes[0, padded - 1]
-        new_len = new_bytes.size
-      end
-    end
 
     data[pos + 12, 4] = [new_len].pack('V')
 
@@ -246,7 +273,7 @@ end
 # --- main ---
 
 script_dir = File.dirname(File.expand_path(__FILE__))
-verbs_file = File.join(script_dir, 'verbs.json')
+verbs_file = File.join(script_dir, 'verbs', 'pl.json')
 
 case ARGV[0]
 when '--restore'
