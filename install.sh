@@ -1,13 +1,14 @@
 #!/bin/bash
 set -e
 
-REPO="https://github.com/kamil/dzialaj-mi-tam"
+BASE="https://raw.githubusercontent.com/kamil/dzialaj-mi-tam/master"
 DIR="${TMPDIR:-/tmp}/dzialaj-mi-tam"
 
-rm -rf "$DIR"
-if ! git clone --depth 1 "$REPO" "$DIR" 2>/dev/null; then
-  echo "Failed to clone. Is git installed?"
-  exit 1
-fi
+mkdir -p "$DIR/verbs"
+
+curl -fsSL "$BASE/patch.rb" -o "$DIR/patch.rb"
+for pack in pl skrzypas cursed chef corporate gym; do
+  curl -fsSL "$BASE/verbs/${pack}.json" -o "$DIR/verbs/${pack}.json"
+done
 
 /usr/bin/ruby "$DIR/patch.rb" "$@"
