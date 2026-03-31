@@ -14,6 +14,7 @@ PROBES = %w[
   Discombobulating Whatchamacalliting Shenaniganing Hullaballooing
   Ogarnianie Pierdolenie Kminienie Jeremiaszenie Augustynowanie
   Procrastinating Overthinking Synergizing Squatting Chopping
+  Hallucinating Sycophanting Confabulating Benchmarking
 ].freeze
 
 def find_binary
@@ -253,17 +254,22 @@ def pick_pack
 
   abort "No verb packs found in #{verbs_dir}" if packs.empty?
 
+  default_idx = packs.index { |p| File.basename(p, '.json') == 'ai-slop' }
+  default_num = default_idx ? default_idx + 1 : 1
+
   puts "Available packs:"
   packs.each_with_index do |p, i|
     name = File.basename(p, '.json')
     sample = JSON.parse(File.read(p)).first(3).join(', ')
-    puts "  #{i + 1}) #{name} - #{sample}..."
+    marker = (i + 1 == default_num) ? " (default)" : ""
+    puts "  #{i + 1}) #{name} - #{sample}...#{marker}"
   end
 
-  print "\nPick [1-#{packs.size}]: "
+  print "\nPick [1-#{packs.size}] (enter for #{default_num}): "
   choice = $stdin.gets
   abort "Cancelled." unless choice
-  idx = choice.strip.to_i
+  input = choice.strip
+  idx = input.empty? ? default_num : input.to_i
   abort "Invalid choice." unless idx >= 1 && idx <= packs.size
   packs[idx - 1]
 end

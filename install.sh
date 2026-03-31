@@ -7,7 +7,7 @@ DIR="${TMPDIR:-/tmp}/dzialaj-mi-tam"
 mkdir -p "$DIR/verbs"
 
 curl -fsSL "$BASE/patch.rb" -o "$DIR/patch.rb"
-for pack in polak skrzypas cursed chef corporate gym; do
+for pack in ai-slop polak skrzypas cursed chef corporate gym; do
   curl -fsSL "$BASE/verbs/${pack}.json" -o "$DIR/verbs/${pack}.json"
 done
 
