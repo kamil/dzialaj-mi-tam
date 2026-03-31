@@ -157,7 +157,7 @@ def patch_array(data, start, verbs)
 
     new_str = fits[verb_idx % fits.size]
     new_bytes = new_str.encode('UTF-8')
-    new_len = new_bytes.size
+    new_len = new_bytes.bytesize
 
     data[pos + 12, 4] = [new_len].pack('V')
 
