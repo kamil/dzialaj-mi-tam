@@ -1,6 +1,7 @@
 # dzialaj-mi-tam
 
 Custom spinner verbs for Claude Code.
+
 ![CleanShot 2026-03-31 at 4  41 57](https://github.com/user-attachments/assets/7be9373f-7235-457d-b7f1-140198698148)
 
 ## Install
