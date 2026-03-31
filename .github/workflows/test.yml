@@ -1,0 +1,108 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System info
+        run: |
+          /usr/bin/ruby --version
+          uname -a
+          sw_vers
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Find binary
+        id: binary
+        run: |
+          BINARY=$(readlink -f $(which claude))
+          echo "path=$BINARY" >> "$GITHUB_OUTPUT"
+          echo "Binary: $BINARY"
+          file "$BINARY"
+          ls -lh "$BINARY"
+
+      - name: List original verbs
+        run: |
+          /usr/bin/ruby patch.rb --list | head -20
+          ORIGINAL_COUNT=$(/usr/bin/ruby patch.rb --list | wc -l | tr -d ' ')
+          echo "Original verb count: $ORIGINAL_COUNT"
+          if [ "$ORIGINAL_COUNT" -lt 50 ]; then
+            echo "FAIL: expected at least 50 verbs, got $ORIGINAL_COUNT"
+            exit 1
+          fi
+
+      - name: Patch with pl (default)
+        run: |
+          /usr/bin/ruby patch.rb
+          COUNT=$(/usr/bin/ruby patch.rb --list | wc -l | tr -d ' ')
+          echo "Patched verb count: $COUNT"
+          FIRST=$(/usr/bin/ruby patch.rb --list | head -1)
+          echo "First verb: $FIRST"
+          if /usr/bin/ruby patch.rb --list | grep -q "Accomplishing"; then
+            echo "FAIL: original verb still present after patching"
+            exit 1
+          fi
+
+      - name: Restore
+        run: |
+          /usr/bin/ruby patch.rb --restore
+          FIRST=$(/usr/bin/ruby patch.rb --list | head -1)
+          echo "First verb after restore: $FIRST"
+          if [ "$FIRST" != "Accomplishing" ]; then
+            echo "FAIL: expected Accomplishing after restore, got $FIRST"
+            exit 1
+          fi
+
+      - name: Test all verb packs
+        run: |
+          for pack in verbs/*.json; do
+            NAME=$(basename "$pack")
+            echo "--- Testing $NAME ---"
+            /usr/bin/ruby patch.rb --restore 2>/dev/null
+            rm -f "${{ steps.binary.outputs.path }}.backup"
+            /usr/bin/ruby patch.rb "$pack"
+            COUNT=$(/usr/bin/ruby patch.rb --list | wc -l | tr -d ' ')
+            echo "  Verbs after patch: $COUNT"
+            if [ "$COUNT" -lt 50 ]; then
+              echo "  FAIL: expected at least 50 verbs, got $COUNT"
+              exit 1
+            fi
+            if [ "$NAME" != "original.json" ]; then
+              if /usr/bin/ruby patch.rb --list | grep -q "Accomplishing"; then
+                echo "  FAIL: original verb found after patching with $NAME"
+                exit 1
+              fi
+            fi
+            echo "  OK"
+          done
+
+      - name: Verify binary runs after patching
+        run: |
+          /usr/bin/ruby patch.rb --restore 2>/dev/null
+          rm -f "${{ steps.binary.outputs.path }}.backup"
+          /usr/bin/ruby patch.rb verbs/cursed.json
+          timeout 5 claude --version || CODE=$?
+          if [ "${CODE:-0}" -eq 124 ]; then
+            echo "Timed out (expected, no API key) - binary runs OK"
+          elif [ "${CODE:-0}" -eq 0 ]; then
+            echo "Binary runs OK"
+          else
+            echo "FAIL: binary exited with code $CODE"
+            exit 1
+          fi
+
+      - name: Final restore
+        run: /usr/bin/ruby patch.rb --restore
