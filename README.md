@@ -2,17 +2,15 @@
 
 Replace Claude Code spinner verbs with your own.
 
-Uses system Ruby (`/usr/bin/ruby`) that comes pre-installed on macOS. No dependencies.
+Uses system Ruby (`/usr/bin/ruby`) pre-installed on macOS. No dependencies.
 
-## Install
+## One-liner install
 
 ```bash
-git clone https://github.com/kamil/dzialaj-mi-tam.git
-cd dzialaj-mi-tam
-ruby patch.rb
+bash <(curl -fsSL https://raw.githubusercontent.com/kamil/dzialaj-mi-tam/master/install.sh)
 ```
 
-Running without arguments shows an interactive picker:
+Pick a pack from the interactive menu:
 
 ```
 Available packs:
@@ -25,10 +23,10 @@ Available packs:
 Pick a pack [1-5]:
 ```
 
-Or pass a pack directly:
+## Restore
 
 ```bash
-ruby patch.rb verbs/cursed.json
+bash <(curl -fsSL https://raw.githubusercontent.com/kamil/dzialaj-mi-tam/master/install.sh) --restore
 ```
 
 ## Verb packs
@@ -41,28 +39,18 @@ ruby patch.rb verbs/cursed.json
 | `corporate` | Synergizing, Circling-back, Solutioning... |
 | `gym` | Squatting, Deadlifting, Maxing-out... |
 
-## Restore
-
-```bash
-ruby patch.rb --restore
-```
-
 ## Custom verbs
 
-Create your own JSON file:
+Clone the repo, add a JSON file to `verbs/`, run:
+
+```bash
+ruby patch.rb verbs/my_pack.json
+```
+
+Format: plain JSON array of strings:
 
 ```json
 ["Thinking", "Pondering", "Vibing"]
-```
-
-```bash
-ruby patch.rb my_verbs.json
-```
-
-## List current verbs
-
-```bash
-ruby patch.rb --list
 ```
 
 ## How it works
@@ -71,7 +59,7 @@ ruby patch.rb --list
 2. Creates a `.backup` next to it
 3. Locates the spinner verb arrays inside the Bun executable
 4. Replaces strings in-place, respecting memory slot alignment
-5. On macOS: re-signs the binary ad-hoc with original entitlements
+5. Re-signs the binary ad-hoc with original entitlements
 
 ## Notes
 
