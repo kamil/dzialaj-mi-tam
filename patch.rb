@@ -4,118 +4,46 @@
 require 'json'
 require 'fileutils'
 
-ENTRY_HEADER = "\x10\x00\x00\x00\x00\x00\x00\x00\x09\x00\x00\x00".b
+HEADER = "\x10\x00\x00\x00\x00\x00\x00\x00".b
+HEADER_WITH_TYPE = "\x10\x00\x00\x00\x00\x00\x00\x00\x09\x00\x00\x00".b
 FIRST_VERB = "Accomplishing".b
+ARRAY_SCAN_LIMIT = 9_000
+
+PROBES = %w[
+  Boondoggling Flibbertigibbeting Razzmatazzing Prestidigitating
+  Discombobulating Whatchamacalliting Shenaniganing Hullaballooing
+  Ogarnianie Pierdolenie Kminienie Jeremiaszenie Augustynowanie
+  Procrastinating Overthinking Synergizing Squatting Chopping
+].freeze
 
 def find_binary
-  dirs = [
-    File.expand_path("~/.local/share/claude/versions"),
-    File.expand_path("~/.claude/versions")
-  ]
-
-  dirs.each do |dir|
-    next unless Dir.exist?(dir)
-    entries = Dir.entries(dir)
+  dir = File.expand_path("~/.local/share/claude/versions")
+  if Dir.exist?(dir)
+    entry = Dir.entries(dir)
       .reject { |f| f.start_with?('.') || f.end_with?('.backup') }
       .map { |f| File.join(dir, f) }
       .select { |f| File.file?(f) && File.executable?(f) }
-      .sort_by { |f| -File.mtime(f).to_i }
-
-    return entries.first unless entries.empty?
+      .max_by { |f| File.mtime(f).to_i }
+    return entry if entry
   end
 
   claude = `which claude 2>/dev/null`.strip
-  return File.realpath(claude) if !claude.empty? && File.file?(claude)
-
-  nil
+  File.realpath(claude) if !claude.empty? && File.file?(claude)
 end
 
 def load_verbs(path)
   verbs = JSON.parse(File.read(path))
-  abort "verbs.json must be a non-empty array" unless verbs.is_a?(Array) && !verbs.empty?
+  abort "verbs file must be a non-empty array" unless verbs.is_a?(Array) && !verbs.empty?
   verbs
 end
 
-def find_verb_arrays(data)
-  arrays = []
-  pos = 0
-  while (idx = data.index(FIRST_VERB, pos))
-    header_start = idx - 16
-    if header_start >= 0 && data[header_start, 12] == ENTRY_HEADER
-      arrays << header_start
-    end
-    pos = idx + FIRST_VERB.size
-  end
-  arrays
-end
-
-def find_any_verb_array(data)
-  hits = []
-  probes = %w[Boondoggling Flibbertigibbeting Razzmatazzing Prestidigitating
-              Discombobulating Whatchamacalliting Shenaniganing Hullaballooing
-              Ogarnianie Pierdolenie Kminienie Kombinowanie
-              Procrastinating Overthinking Doom-scrolling
-              Synergizing Solutioning Squatting Deadlifting
-              Chopping Deglazing]
-  probes.each do |verb|
-    vb = verb.b
-    pos = 0
-    while (idx = data.index(vb, pos))
-      hs = idx - 16
-      if hs >= 0 && data[hs, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
-        str_len = data[hs + 12, 4].unpack1('V')
-        hits << hs if str_len == vb.size
-      end
-      pos = idx + vb.size
-    end
-  end
-  return [] if hits.empty?
-
-  hits.sort!
-  hits.uniq!
-
-  groups = hits.slice_when { |a, b| b - a > 100_000 }.to_a
-
-  groups.map do |group|
-    earliest = group.min
-    scan = earliest
-    loop do
-      found_prev = false
-      64.step(16, -16) do |try_back|
-        test = scan - try_back
-        next if test < 0
-        next unless data[test, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
-        tl = data[test + 12, 4].unpack1('V')
-        next unless tl >= 3 && tl <= 30
-        tp = ((tl + 15) / 16) * 16
-        if test + 16 + tp == scan
-          scan = test
-          found_prev = true
-          break
-        end
-      end
-      break unless found_prev
-    end
-    scan
-  end.uniq.select { |r| count_entries(data, r) >= 50 }
-end
-
-def count_entries(data, start)
-  limit = start + 9_000
-  pos = start
-  count = 0
-  while (pos = skip_to_entry(data, pos, limit))
-    str_len = data[pos + 12, 4].unpack1('V')
-    padded = ((str_len + 15) / 16) * 16
-    count += 1
-    pos += 16 + padded
-  end
-  count
+def padded(len)
+  ((len + 15) / 16) * 16
 end
 
 def skip_to_entry(data, pos, limit)
   while pos < limit
-    if data[pos, 8] == "\x10\x00\x00\x00\x00\x00\x00\x00".b
+    if data[pos, 8] == HEADER
       str_len = data[pos + 12, 4].unpack1('V')
       return pos if str_len >= 3 && str_len <= 30
     end
@@ -124,52 +52,109 @@ def skip_to_entry(data, pos, limit)
   nil
 end
 
-def read_array(data, start)
-  verbs = []
-  limit = start + 9_000
+def each_entry(data, start)
+  limit = start + ARRAY_SCAN_LIMIT
   pos = start
   while (pos = skip_to_entry(data, pos, limit))
     str_len = data[pos + 12, 4].unpack1('V')
-    padded = ((str_len + 15) / 16) * 16
+    pad = padded(str_len)
+    yield pos, str_len, pad
+    pos += 16 + pad
+  end
+end
+
+def find_verb_arrays(data)
+  arrays = []
+  pos = 0
+  while (idx = data.index(FIRST_VERB, pos))
+    hs = idx - 16
+    arrays << hs if hs >= 0 && data[hs, 12] == HEADER_WITH_TYPE
+    pos = idx + FIRST_VERB.size
+  end
+  arrays
+end
+
+def find_any_verb_array(data)
+  hits = []
+  PROBES.each do |verb|
+    vb = verb.encode('UTF-8').b
+    pos = 0
+    while (idx = data.index(vb, pos))
+      hs = idx - 16
+      if hs >= 0 && data[hs, 8] == HEADER
+        str_len = data[hs + 12, 4].unpack1('V')
+        hits << hs if str_len == vb.bytesize
+      end
+      pos = idx + vb.bytesize
+    end
+  end
+  return [] if hits.empty?
+
+  groups = hits.sort.uniq.slice_when { |a, b| b - a > 100_000 }.to_a
+  groups.map { |g| walk_back(data, g.min) }
+    .uniq
+    .select { |r| count_entries(data, r) >= 50 }
+end
+
+def walk_back(data, pos)
+  loop do
+    found = false
+    64.step(16, -16) do |tb|
+      test = pos - tb
+      next if test < 0
+      next unless data[test, 8] == HEADER
+      tl = data[test + 12, 4].unpack1('V')
+      next unless tl >= 3 && tl <= 30
+      if test + 16 + padded(tl) == pos
+        pos = test
+        found = true
+        break
+      end
+    end
+    break unless found
+  end
+  pos
+end
+
+def count_entries(data, start)
+  n = 0
+  each_entry(data, start) { n += 1 }
+  n
+end
+
+def read_array(data, start)
+  verbs = []
+  each_entry(data, start) do |pos, str_len, _|
     verbs << data[pos + 16, str_len].force_encoding('UTF-8')
-    pos += 16 + padded
   end
   verbs
 end
 
 def patch_array(data, start, verbs)
-  limit = start + 9_000
-  pos = start
+  by_pad = {}
+  verbs.each do |v|
+    bs = v.encode('UTF-8').bytesize
+    (padded(bs)..64).step(16) { |p| (by_pad[p] ||= []) << v }
+  end
+
   patched = 0
   verb_idx = 0
-
-  while (pos = skip_to_entry(data, pos, limit))
-    str_len = data[pos + 12, 4].unpack1('V')
-    padded = ((str_len + 15) / 16) * 16
-    slot_size = 16 + padded
-
-    fits = verbs.select { |v| v.encode('UTF-8').bytesize <= padded }
-    if fits.empty?
+  each_entry(data, start) do |pos, _, pad|
+    fits = by_pad[pad]
+    unless fits
       verb_idx += 1
-      pos += slot_size
       next
     end
 
-    new_str = fits[verb_idx % fits.size]
-    new_bytes = new_str.encode('UTF-8')
+    new_bytes = fits[verb_idx % fits.size].encode('UTF-8')
     new_len = new_bytes.bytesize
 
     data[pos + 12, 4] = [new_len].pack('V')
-
-    padded.times do |i|
-      data.setbyte(pos + 16 + i, i < new_len ? new_bytes.getbyte(i) : 0)
-    end
+    pad.times { |i| data.setbyte(pos + 16 + i, i < new_len ? new_bytes.getbyte(i) : 0) }
 
     patched += 1
     verb_idx += 1
-    pos += slot_size
   end
-
   patched
 end
 
@@ -189,14 +174,13 @@ def extract_entitlements(binary)
       </dict></plist>
     PLIST
   end
-
   path
 end
 
 def resign(binary, entitlements)
-  system("codesign", "--remove-signature", binary, err: File::NULL)
+  system("codesign", "--remove-signature", binary, out: File::NULL, err: File::NULL)
   system("codesign", "-f", "-s", "-", "--entitlements", entitlements,
-         "--options", "runtime", binary)
+         "--options", "runtime", binary, out: File::NULL, err: File::NULL)
 end
 
 def cmd_patch(verbs_file)
@@ -205,11 +189,9 @@ def cmd_patch(verbs_file)
   puts "Binary: #{binary}"
 
   backup = "#{binary}.backup"
-  if File.exist?(backup)
-    puts "Backup: #{backup} (exists)"
-  else
-    puts "Backup: #{backup}"
+  unless File.exist?(backup)
     FileUtils.cp(binary, backup, preserve: true)
+    puts "Backup: #{backup}"
   end
 
   verbs = load_verbs(verbs_file)
@@ -222,7 +204,6 @@ def cmd_patch(verbs_file)
 
   arrays = find_verb_arrays(data)
   abort "Could not find verb arrays. Is this Claude Code >= 2.x?" if arrays.empty?
-  puts "Found #{arrays.size} verb array(s)"
 
   total = 0
   arrays.each_with_index do |offset, i|
@@ -234,18 +215,15 @@ def cmd_patch(verbs_file)
   File.binwrite(binary, data)
 
   if RUBY_PLATFORM.include?('darwin') && entitlements
-    puts "Re-signing binary (macOS)..."
     unless resign(binary, entitlements)
-      puts "Signing failed! Restoring backup..."
+      puts "Signing failed, restoring backup..."
       FileUtils.cp(backup, binary, preserve: true)
       exit 1
     end
-    puts "Signed OK"
     File.delete(entitlements) rescue nil
   end
 
-  puts "\nDone! #{total} verbs patched."
-  puts "Restore: ruby patch.rb --restore"
+  puts "Done! #{total} verbs patched."
 end
 
 def cmd_restore
@@ -262,7 +240,6 @@ def cmd_list
   abort "Could not find Claude Code binary." unless binary
 
   data = File.binread(binary).b
-
   arrays = find_verb_arrays(data)
   arrays = find_any_verb_array(data) if arrays.empty?
   abort "No verb arrays found." if arrays.empty?
@@ -271,38 +248,29 @@ def cmd_list
 end
 
 def pick_pack
-  script_dir = File.dirname(File.expand_path(__FILE__))
-  verbs_dir = File.join(script_dir, 'verbs')
+  verbs_dir = File.join(File.dirname(File.expand_path(__FILE__)), 'verbs')
   packs = Dir.glob(File.join(verbs_dir, '*.json')).sort
 
-  if packs.empty?
-    abort "No verb packs found in #{verbs_dir}"
-  end
+  abort "No verb packs found in #{verbs_dir}" if packs.empty?
 
   puts "Available packs:"
   packs.each_with_index do |p, i|
     name = File.basename(p, '.json')
-    verbs = JSON.parse(File.read(p))
-    sample = verbs.first(3).join(', ')
-    puts "  #{i + 1}) #{name} (#{verbs.size} verbs: #{sample}...)"
+    sample = JSON.parse(File.read(p)).first(3).join(', ')
+    puts "  #{i + 1}) #{name} - #{sample}..."
   end
 
-  print "\nPick a pack [1-#{packs.size}]: "
+  print "\nPick [1-#{packs.size}]: "
   choice = $stdin.gets
   abort "Cancelled." unless choice
-  choice = choice.strip.to_i
-  abort "Invalid choice." unless choice >= 1 && choice <= packs.size
-
-  packs[choice - 1]
+  idx = choice.strip.to_i
+  abort "Invalid choice." unless idx >= 1 && idx <= packs.size
+  packs[idx - 1]
 end
 
-# --- main ---
-
 case ARGV[0]
-when '--restore'
-  cmd_restore
-when '--list'
-  cmd_list
+when '--restore' then cmd_restore
+when '--list'    then cmd_list
 else
   if ARGV[0] && !ARGV[0].start_with?('-')
     verbs_file = ARGV[0]
