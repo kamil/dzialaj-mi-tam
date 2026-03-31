@@ -1,74 +1,63 @@
 # dzialaj-mi-tam
 
-Podmienia teksty spinnera w Claude Code na w pelni konfigurowalne wlasne.
+Replace Claude Code spinner verbs with your own. Ships with a Polish set by default.
 
-Domyslnie dostarcza zestaw polskich slow (kulturalnych i mniej kulturalnych).
+Uses system Ruby (`/usr/bin/ruby`) that comes pre-installed on macOS. No dependencies.
 
-![jak tam chlopie](https://i.imgflip.com/2/1bij.jpg)
+## Install
 
-## Instalacja (jedna linijka)
+```bash
+git clone https://github.com/kamil/dzialaj-mi-tam.git
+cd dzialaj-mi-tam
+ruby patch.rb
+```
+
+Or one-liner (requires git):
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/kamil/dzialaj-mi-tam/master/install.sh)
 ```
 
-Albo recznie:
+## Restore
 
 ```bash
-git clone https://github.com/kamil/dzialaj-mi-tam.git
-cd dzialaj-mi-tam
-python3 patch.py
+ruby patch.rb --restore
 ```
 
-## Przywracanie oryginalu
+## Custom verbs
+
+Edit `verbs.json` or point to your own file:
 
 ```bash
-python3 patch.py --restore
+ruby patch.rb my_verbs.json
 ```
 
-## Wlasne slowa
-
-Edytuj `verbs.json` i odpal ponownie:
-
-```bash
-python3 patch.py verbs.json
-```
-
-Albo uzyj dowolnego pliku JSON:
-
-```bash
-python3 patch.py moje_slowa.json
-```
-
-Format: zwykla tablica stringow:
+Format: plain JSON array of strings:
 
 ```json
-[
-  "Ogarnianie",
-  "Kombinowanie",
-  "Kminienie"
-]
+["Thinking", "Pondering", "Vibing"]
 ```
 
-## Podglad aktualnych slow
+## List current verbs
 
 ```bash
-python3 patch.py --list
+ruby patch.rb --list
 ```
 
-## Jak to dziala
+## How it works
 
-1. Znajduje binarke Claude Code (`~/.local/share/claude/versions/`)
-2. Robi backup (`.backup`)
-3. Lokalizuje tablice czasownikow w binarce (format Bun SEA)
-4. Podmienia stringi z zachowaniem slotow pamieci
-5. Na macOS: re-signuje binarke ad-hoc z oryginalnymi entitlements
+1. Finds the Claude Code binary in `~/.local/share/claude/versions/`
+2. Creates a `.backup` next to it
+3. Locates the spinner verb arrays inside the Bun executable
+4. Replaces strings in-place, respecting memory slot alignment
+5. On macOS: re-signs the binary ad-hoc with original entitlements
 
-## Uwagi
+## Notes
 
-- macOS only (na razie)
-- Kazdy `claude update` nadpisuje binarke - trzeba odpalic ponownie
-- Wymaga Python 3.6+
-- Backup zawsze w `<binary>.backup`
+- macOS only (for now)
+- `claude update` overwrites the binary, re-run after updating
+- Backup is always at `<binary>.backup`
 
-## Dzialaj mi tam i zebys mi byl!!!
+## License
+
+MIT

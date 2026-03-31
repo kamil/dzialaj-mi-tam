@@ -12,4 +12,4 @@ else
   exit 1
 fi
 
-python3 "$DIR/patch.py"
+/usr/bin/ruby "$DIR/patch.rb"
