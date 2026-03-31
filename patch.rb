@@ -4,17 +4,11 @@
 require 'json'
 require 'fileutils'
 
-HEADER = "\x10\x00\x00\x00\x00\x00\x00\x00".b
-HEADER_WITH_TYPE = "\x10\x00\x00\x00\x00\x00\x00\x00\x09\x00\x00\x00".b
-FIRST_VERB = "Accomplishing".b
-ARRAY_SCAN_LIMIT = 9_000
+ORIGINAL_MARKER = '=["Accomplishing","Actioning"'.b
 
-PROBES = %w[
-  Boondoggling Flibbertigibbeting Razzmatazzing Prestidigitating
-  Discombobulating Whatchamacalliting Shenaniganing Hullaballooing
-  Ogarnianie Pierdolenie Kminienie Jeremiaszenie Augustynowanie
-  Procrastinating Overthinking Synergizing Squatting Chopping
-  Hallucinating Sycophanting Confabulating Benchmarking
+KNOWN_VERBS = %w[
+  Boondoggling Flibbertigibbeting Razzmatazzing Discombobulating
+  Whatchamacalliting Shenaniganing Prestidigitating
 ].freeze
 
 def find_binary
@@ -38,125 +32,62 @@ def load_verbs(path)
   verbs
 end
 
-def padded(len)
-  ((len + 15) / 16) * 16
-end
+def find_js_arrays(data)
+  positions = []
 
-def skip_to_entry(data, pos, limit)
-  while pos < limit
-    if data[pos, 8] == HEADER
-      str_len = data[pos + 12, 4].unpack1('V')
-      return pos if str_len >= 3 && str_len <= 30
-    end
-    pos += 16
-  end
-  nil
-end
-
-def each_entry(data, start)
-  limit = start + ARRAY_SCAN_LIMIT
-  pos = start
-  while (pos = skip_to_entry(data, pos, limit))
-    str_len = data[pos + 12, 4].unpack1('V')
-    pad = padded(str_len)
-    yield pos, str_len, pad
-    pos += 16 + pad
-  end
-end
-
-def find_verb_arrays(data)
-  arrays = []
   pos = 0
-  while (idx = data.index(FIRST_VERB, pos))
-    hs = idx - 16
-    arrays << hs if hs >= 0 && data[hs, 12] == HEADER_WITH_TYPE
-    pos = idx + FIRST_VERB.size
+  while (idx = data.index(ORIGINAL_MARKER, pos))
+    arr_start = idx + 1
+    arr_end = data.index("]".b, arr_start)
+    positions << [arr_start, arr_end] if arr_end
+    pos = idx + ORIGINAL_MARKER.size
   end
-  arrays
-end
+  return positions unless positions.empty?
 
-def find_any_verb_array(data)
-  hits = []
-  PROBES.each do |verb|
-    vb = verb.encode('UTF-8').b
-    pos = 0
-    while (idx = data.index(vb, pos))
-      hs = idx - 16
-      if hs >= 0 && data[hs, 8] == HEADER
-        str_len = data[hs + 12, 4].unpack1('V')
-        hits << hs if str_len == vb.bytesize
-      end
-      pos = idx + vb.bytesize
+  pos = 0
+  while (idx = data.index('=["'.b, pos))
+    arr_start = idx + 1
+    pos = idx + 3
+    arr_end = data.index("]".b, arr_start + 500)
+    next unless arr_end
+    chunk = data[arr_start..arr_end]
+    next if chunk.bytesize < 500 || chunk.bytesize > 5000
+    begin
+      parsed = JSON.parse(chunk.force_encoding('UTF-8'))
+      next unless parsed.is_a?(Array) && parsed.size >= 50
+      has_upper = parsed.count { |v| v.is_a?(String) && v[0] =~ /[A-Z]/ }
+      next unless parsed.all? { |v| v.is_a?(String) && v.size >= 3 && v.size <= 40 }
+      next unless has_upper > parsed.size / 2
+      positions << [arr_start, arr_end]
+    rescue
     end
   end
-  return [] if hits.empty?
 
-  groups = hits.sort.uniq.slice_when { |a, b| b - a > 100_000 }.to_a
-  groups.map { |g| walk_back(data, g.min) }
-    .uniq
-    .select { |r| count_entries(data, r) >= 50 }
+  positions.uniq
 end
 
-def walk_back(data, pos)
-  loop do
-    found = false
-    64.step(16, -16) do |tb|
-      test = pos - tb
-      next if test < 0
-      next unless data[test, 8] == HEADER
-      tl = data[test + 12, 4].unpack1('V')
-      next unless tl >= 3 && tl <= 30
-      if test + 16 + padded(tl) == pos
-        pos = test
-        found = true
-        break
-      end
-    end
-    break unless found
-  end
-  pos
+def read_js_array(data, arr_start, arr_end)
+  JSON.parse(data[arr_start..arr_end].force_encoding('UTF-8'))
+rescue
+  []
 end
 
-def count_entries(data, start)
-  n = 0
-  each_entry(data, start) { n += 1 }
-  n
-end
-
-def read_array(data, start)
-  verbs = []
-  each_entry(data, start) do |pos, str_len, _|
-    verbs << data[pos + 16, str_len].force_encoding('UTF-8')
-  end
-  verbs
-end
-
-def patch_array(data, start, verbs)
-  by_pad = {}
-  verbs.each do |v|
-    bs = v.encode('UTF-8').bytesize
-    (padded(bs)..64).step(16) { |p| (by_pad[p] ||= []) << v }
-  end
-
-  patched = 0
+def build_replacement(original_size, verbs)
+  items = []
   verb_idx = 0
-  each_entry(data, start) do |pos, _, pad|
-    fits = by_pad[pad]
-    unless fits
-      verb_idx += 1
-      next
-    end
-
-    new_bytes = fits[verb_idx % fits.size].encode('UTF-8')
-    new_len = new_bytes.bytesize
-
-    data[pos + 12, 4] = [new_len].pack('V')
-    pad.times { |i| data.setbyte(pos + 16 + i, i < new_len ? new_bytes.getbyte(i) : 0) }
-
-    patched += 1
+  1000.times do
+    items << verbs[verb_idx % verbs.size]
     verb_idx += 1
+    break if JSON.generate(items).bytesize >= original_size
   end
-  patched
+  items.pop if JSON.generate(items).bytesize > original_size
+
+  result = JSON.generate(items)
+  deficit = original_size - result.bytesize
+  if deficit > 0
+    result = result[0..-2] + (" " * deficit) + "]"
+  end
+  result[0, original_size]
 end
 
 def extract_entitlements(binary)
@@ -192,7 +123,6 @@ def cmd_patch(verbs_file)
   backup = "#{binary}.backup"
   unless File.exist?(backup)
     FileUtils.cp(binary, backup, preserve: true)
-    puts "Backup: #{backup}"
   end
 
   verbs = load_verbs(verbs_file)
@@ -203,15 +133,14 @@ def cmd_patch(verbs_file)
   data = File.binread(binary).dup
   data.force_encoding('BINARY')
 
-  arrays = find_verb_arrays(data)
-  arrays = find_any_verb_array(data) if arrays.empty?
+  arrays = find_js_arrays(data)
   abort "Could not find verb arrays. Is this Claude Code >= 2.x?" if arrays.empty?
 
-  total = 0
-  arrays.each_with_index do |offset, i|
-    count = patch_array(data, offset, verbs)
-    puts "  Array #{i}: #{count} verbs patched"
-    total += count
+  arrays.each_with_index do |(arr_start, arr_end), i|
+    original = data[arr_start..arr_end]
+    replacement = build_replacement(original.bytesize, verbs)
+    data[arr_start, original.bytesize] = replacement.encode('UTF-8').b
+    puts "  Patched array #{i} (#{original.bytesize} bytes)"
   end
 
   File.binwrite(binary, data)
@@ -225,7 +154,7 @@ def cmd_patch(verbs_file)
     File.delete(entitlements) rescue nil
   end
 
-  puts "Done! #{total} verbs patched."
+  puts "Done!"
 end
 
 def cmd_restore
@@ -242,11 +171,10 @@ def cmd_list
   abort "Could not find Claude Code binary." unless binary
 
   data = File.binread(binary).b
-  arrays = find_verb_arrays(data)
-  arrays = find_any_verb_array(data) if arrays.empty?
+  arrays = find_js_arrays(data)
   abort "No verb arrays found." if arrays.empty?
 
-  read_array(data, arrays.first).each { |v| puts v }
+  read_js_array(data, *arrays.first).each { |v| puts v }
 end
 
 def pick_pack
