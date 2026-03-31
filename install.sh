@@ -4,6 +4,7 @@ set -e
 BASE="https://raw.githubusercontent.com/kamil/dzialaj-mi-tam/master"
 DIR="${TMPDIR:-/tmp}/dzialaj-mi-tam"
 
+rm -rf "$DIR"
 mkdir -p "$DIR/verbs"
 
 curl -fsSL "$BASE/patch.rb" -o "$DIR/patch.rb"

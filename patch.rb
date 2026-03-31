@@ -204,6 +204,7 @@ def cmd_patch(verbs_file)
   data.force_encoding('BINARY')
 
   arrays = find_verb_arrays(data)
+  arrays = find_any_verb_array(data) if arrays.empty?
   abort "Could not find verb arrays. Is this Claude Code >= 2.x?" if arrays.empty?
 
   total = 0
