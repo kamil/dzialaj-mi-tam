@@ -22,30 +22,7 @@ Available packs:
 Pick [1-6]:
 ```
 
-## Restore
-
-Re-run the installer with `--restore`:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/kamil/dzialaj-mi-tam/master/install.sh) --restore
-```
-
-Or just update Claude Code, which replaces the binary:
-
-```bash
-claude update
-```
-
-## Packs
-
-| Pack | Vibe |
-|------|------|
-| **skrzypas** | Jeremiaszenie, Wołanie Brygidy, Ty szmato, Jak tam chłopie... |
-| **pl** | Pierdolenie, Gównoburzenie, Rzyganie, Bekanie... |
-| **cursed** | Procrastinating, Hallucinating, Doom-scrolling... |
-| **corporate** | Synergizing, Circling-back, Solutioning... |
-| **chef** | Chopping, Deglazing, Sous-viding... |
-| **gym** | Squatting, Deadlifting, Maxing-out... |
+To undo, just run `claude update`.
 
 ## Custom verbs
 
@@ -58,11 +35,6 @@ ruby patch.rb my_verbs.json
 ```json
 ["Thinking", "Pondering", "Vibing"]
 ```
-
-## Notes
-
-- `claude update` overwrites the binary, re-run after updating
-- Backup at `<binary>.backup`
 
 ## License
 
